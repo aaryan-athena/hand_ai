@@ -1,0 +1,99 @@
+// Hand Rehab CV System - Prisma schema
+// SQLite for single-laptop local deployment (no login, role-selector based)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Postgres (Vercel Postgres / Neon / Supabase, etc). SQLite can't be used on
+// Vercel since serverless functions get an ephemeral, per-invocation
+// filesystem — a local .db file wouldn't persist between requests.
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL") // pooled connection string (use for app runtime)
+  directUrl = env("DIRECT_URL") // non-pooled, used for migrations/db push
+}
+
+enum ExerciseType {
+  FIST_CURL // average finger curl (open <-> closed fist)
+  FINGER_SPREAD // abduction: fingertip spread distance
+  THUMB_OPPOSITION // thumb tip to pinky tip distance
+}
+
+model Physician {
+  id        String     @id @default(cuid())
+  name      String
+  createdAt DateTime   @default(now())
+  exercises Exercise[]
+  patients  Patient[]
+}
+
+model Patient {
+  id          String            @id @default(cuid())
+  name        String
+  condition   String? // e.g. "Post-stroke left hand weakness"
+  physicianId String?
+  physician   Physician?        @relation(fields: [physicianId], references: [id])
+  createdAt   DateTime          @default(now())
+  assignments PatientExercise[]
+  attempts    Attempt[]
+}
+
+// A physician-authored exercise template with calibrated thresholds
+model Exercise {
+  id            String       @id @default(cuid())
+  name          String
+  type          ExerciseType
+  description   String?
+  physicianId   String
+  physician     Physician    @relation(fields: [physicianId], references: [id])
+  repetitions   Int          @default(10) // default prescribed reps
+  hand          String       @default("RIGHT") // RIGHT | LEFT
+
+  // Calibrated thresholds derived from the physician's recorded demonstration
+  minValue      Float // metric value at fully "closed"/contracted extreme
+  maxValue      Float // metric value at fully "open"/extended extreme
+  avgRepMs      Float // average time per repetition (ms)
+  smoothness    Float // baseline jerk/variance metric (lower = smoother)
+  calibratedAt  DateTime?
+
+  createdAt     DateTime           @default(now())
+  assignments   PatientExercise[]
+  attempts      Attempt[]
+}
+
+// Assignment of an exercise to a patient, with per-patient overrides
+model PatientExercise {
+  id          String    @id @default(cuid())
+  patientId   String
+  patient     Patient   @relation(fields: [patientId], references: [id])
+  exerciseId  String
+  exercise    Exercise  @relation(fields: [exerciseId], references: [id])
+  repetitions Int // prescribed reps for this patient (can override exercise default)
+  active      Boolean   @default(true)
+  assignedAt  DateTime  @default(now())
+  notes       String?
+
+  @@unique([patientId, exerciseId])
+}
+
+// A single patient practice session/attempt at an exercise
+model Attempt {
+  id             String   @id @default(cuid())
+  patientId      String
+  patient        Patient  @relation(fields: [patientId], references: [id])
+  exerciseId     String
+  exercise       Exercise @relation(fields: [exerciseId], references: [id])
+  createdAt      DateTime @default(now())
+
+  repsPrescribed Int
+  repsCompleted  Int
+
+  romScore        Float // 0-100
+  speedScore      Float // 0-100
+  smoothnessScore Float // 0-100
+  completionScore Float // 0-100
+  overallScore    Float // 0-100 weighted
+
+  repDetails     String // JSON-encoded array of per-rep metrics
+}

@@ -1,36 +1,107 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# HandRehab AI
 
-## Getting Started
+A computer-vision hand rehabilitation web app — webcam only, no extra
+hardware, no login (role-based profile selection instead).
 
-First, run the development server:
+## Workflow
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+1. **Physician** picks/creates their profile, then demonstrates an exercise in
+   front of the webcam (`Physician → Exercise Library → Calibrate new
+   exercise`). The system tracks the hand with MediaPipe, records the metric
+   over time, and derives thresholds: range of motion, average rep duration,
+   and a smoothness baseline.
+2. The physician assigns the exercise to a patient with a prescribed
+   repetition count (`Physician → Patients → [patient] → Assign from
+   library`).
+3. **Patient** picks their profile (`/patient`), opens an assigned exercise,
+   and performs it in front of the webcam. Live feedback shows a rep counter
+   and a range-of-motion gauge.
+4. On finishing, the system scores the attempt against the physician's
+   calibrated thresholds across four parameters — range of motion, speed,
+   smoothness, and completion — and stores it.
+5. Both the physician (`Patient → Export Report`) and the patient
+   (`My Report`) can open a full report showing every parameter behind the
+   score — target ROM/tempo/smoothness per exercise, every attempt's
+   sub-scores, and a per-repetition breakdown (min/max reached, duration,
+   jerk) — then print it to PDF or download it as CSV (summary or per-rep).
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Exercise types (v1)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+All three only need one hand's 21 MediaPipe landmarks, no forearm/pose
+tracking:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- **Fist Open/Close** — average fingertip-to-wrist distance (grip ROM)
+- **Finger Spread** — average distance between adjacent fingertips (abduction)
+- **Thumb Opposition** — thumb-tip to pinky-tip distance
 
-## Learn More
+Rep detection uses a hysteresis state machine over the metric time series
+(`src/lib/handMetrics.ts`), so it's robust to jitter near the midpoint.
 
-To learn more about Next.js, take a look at the following resources:
+## Stack
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- Next.js (App Router) + TypeScript + Tailwind
+- Prisma + Postgres (Vercel Postgres / Neon / any Postgres works)
+- `@mediapipe/tasks-vision` HandLandmarker — runs entirely client-side in the
+  browser (webcam frames never leave the device)
+- Recharts for the physician's progress charts
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Running locally
 
-## Deploy on Vercel
+1. Get a Postgres database. Easiest: a free [Neon](https://neon.tech) project,
+   or the "Neon"/"Postgres" integration from the Vercel dashboard's Storage
+   tab (works locally too — just copy the connection strings out).
+2. Copy `.env.example` to `.env` and fill in `DATABASE_URL` (pooled
+   connection string) and `DIRECT_URL` (direct/non-pooled — same DB, just the
+   non-pgbouncer connection string, used for schema pushes/migrations).
+3.
+   ```bash
+   npm install
+   npx prisma db push   # creates the tables from prisma/schema.prisma
+   npm run dev
+   ```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Open http://localhost:3000. First run needs internet once, to fetch the
+MediaPipe wasm runtime + hand-landmark model from a CDN (cached by the browser
+after that). Camera access requires `localhost` or HTTPS.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Deploying to Vercel
+
+1. Push this repo to GitHub/GitLab/Bitbucket and import it in Vercel.
+2. Add a Postgres database from the Vercel dashboard **Storage** tab (Neon
+   integration), or bring your own — either way you'll get pooled + direct
+   connection strings.
+3. In the project's **Settings → Environment Variables**, set:
+   - `DATABASE_URL` — the pooled connection string
+   - `DIRECT_URL` — the direct/non-pooled connection string
+4. Before (or after) the first deploy, push the schema to that database once:
+   ```bash
+   DATABASE_URL="<pooled>" DIRECT_URL="<direct>" npx prisma db push
+   ```
+   (run this from your machine, or via `vercel env pull` to grab the values
+   locally first). This only needs to be re-run when `prisma/schema.prisma`
+   changes.
+5. Deploy. `npm run build` already runs `prisma generate` first (see
+   `package.json`), and `postinstall` also runs it as a safety net — no extra
+   Vercel build-command configuration needed.
+
+No other Vercel-specific config is required: all routes are standard Next.js
+API routes (Node runtime, not Edge), and the webcam/MediaPipe work is 100%
+client-side.
+
+## Data model
+
+See `prisma/schema.prisma`. Key entities: `Physician`, `Patient`, `Exercise`
+(physician-authored template with calibrated thresholds), `PatientExercise`
+(assignment, with per-patient rep overrides), `Attempt` (one scored patient
+session, with a JSON `repDetails` field holding the full per-rep breakdown
+used by the report/export views).
+
+## Notes / limitations (v1 scope)
+
+- No authentication — profile selection only. Since patient/report data is
+  now reachable by anyone with the URL once deployed, don't put real patient
+  PII in it without adding auth first.
+- Single hand tracked per session (`numHands: 1`).
+- Scoring weights (ROM 40% / completion 30% / speed 15% / smoothness 15%) are
+  a reasonable default, not clinically validated — tune in
+  `src/lib/handMetrics.ts` (`scoreAttempt`) if needed.
