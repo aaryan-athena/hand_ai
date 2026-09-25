@@ -10,6 +10,7 @@ import {
   type ExerciseType,
   type Sample,
 } from "@/lib/handMetrics";
+import { fetchJson } from "@/lib/fetchJson";
 
 const TYPES: ExerciseType[] = ["FIST_CURL", "FINGER_SPREAD", "THUMB_OPPOSITION"];
 
@@ -65,7 +66,7 @@ export default function CalibrationRecorder({ physicianId }: { physicianId: stri
     setSubmitting(true);
     setErrorMsg(null);
     try {
-      const res = await fetch("/api/exercises", {
+      await fetchJson("/api/exercises", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -78,12 +79,9 @@ export default function CalibrationRecorder({ physicianId }: { physicianId: stri
           series,
         }),
       });
-      const data = await res.json();
-      if (!res.ok) {
-        setErrorMsg(data.error || "Failed to save exercise.");
-        return;
-      }
       router.push("/physician");
+    } catch (e) {
+      setErrorMsg((e as Error).message);
     } finally {
       setSubmitting(false);
     }

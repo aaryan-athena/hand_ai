@@ -1,17 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { calibrateFromSeries, type Sample } from "@/lib/handMetrics";
+import { withApiErrorHandling } from "@/lib/apiHandler";
 
-export async function GET(req: NextRequest) {
+export const GET = withApiErrorHandling(async (req: NextRequest) => {
   const physicianId = req.nextUrl.searchParams.get("physicianId");
   const exercises = await prisma.exercise.findMany({
     where: physicianId ? { physicianId } : undefined,
     orderBy: { createdAt: "desc" },
   });
   return NextResponse.json(exercises);
-}
+});
 
-export async function POST(req: NextRequest) {
+export const POST = withApiErrorHandling(async (req: NextRequest) => {
   const body = await req.json();
   const { name, type, description, physicianId, repetitions, hand, series } = body as {
     name: string;
@@ -52,4 +53,4 @@ export async function POST(req: NextRequest) {
   });
 
   return NextResponse.json(exercise, { status: 201 });
-}
+});

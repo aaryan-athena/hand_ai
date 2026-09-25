@@ -88,6 +88,20 @@ No other Vercel-specific config is required: all routes are standard Next.js
 API routes (Node runtime, not Edge), and the webcam/MediaPipe work is 100%
 client-side.
 
+### Troubleshooting a deployment
+
+Open **`/api/health`** on the deployed URL. It reports whether `DATABASE_URL`
+and `DIRECT_URL` are set, which host they point at, and whether the tables
+exist — without ever printing the credentials. Typical results:
+
+- `DATABASE_URL_set: false` → the env var isn't set for this environment in
+  Vercel (check that it's enabled for Production, not just Preview), and
+  remember env var changes only take effect on a **new deployment**.
+- `"the tables are missing"` → the database is reachable but `prisma db push`
+  was never run against it (step 4 above).
+- `"Can't reach database server"` → wrong host, or the connection string is
+  missing `?sslmode=require` (Neon requires SSL).
+
 ## Data model
 
 See `prisma/schema.prisma`. Key entities: `Physician`, `Patient`, `Exercise`

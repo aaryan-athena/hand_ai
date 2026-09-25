@@ -5,16 +5,20 @@ import Link from "next/link";
 import type { PatientDetail } from "@/lib/types";
 import { EXERCISE_LABELS } from "@/lib/handMetrics";
 import { format } from "date-fns";
+import { fetchJson } from "@/lib/fetchJson";
+import ErrorNotice from "@/components/ErrorNotice";
 
 export default function PatientHome({ patientId }: { patientId: string }) {
   const [patient, setPatient] = useState<PatientDetail | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch(`/api/patients/${patientId}`)
-      .then((r) => r.json())
-      .then(setPatient);
+    fetchJson<PatientDetail>(`/api/patients/${patientId}`)
+      .then(setPatient)
+      .catch((e: Error) => setError(e.message));
   }, [patientId]);
 
+  if (error) return <ErrorNotice message={error} />;
   if (!patient) return <p className="text-slate-400">Loading…</p>;
 
   const activeAssignments = patient.assignments.filter((a) => a.active);

@@ -1,5 +1,4 @@
-// Hand Rehab CV System - Prisma schema
-// SQLite for single-laptop local deployment (no login, role-selector based)
+// Hand Rehab AI - Prisma schema (no login, role-selector based)
 
 generator client {
   provider = "prisma-client-js"

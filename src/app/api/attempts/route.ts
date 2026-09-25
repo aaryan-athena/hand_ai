@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { scoreAttempt, type Sample } from "@/lib/handMetrics";
+import { withApiErrorHandling } from "@/lib/apiHandler";
 
-export async function GET(req: NextRequest) {
+export const GET = withApiErrorHandling(async (req: NextRequest) => {
   const patientId = req.nextUrl.searchParams.get("patientId");
   const exerciseId = req.nextUrl.searchParams.get("exerciseId");
   const attempts = await prisma.attempt.findMany({
@@ -14,9 +15,9 @@ export async function GET(req: NextRequest) {
     orderBy: { createdAt: "asc" },
   });
   return NextResponse.json(attempts);
-}
+});
 
-export async function POST(req: NextRequest) {
+export const POST = withApiErrorHandling(async (req: NextRequest) => {
   const body = await req.json();
   const { patientId, exerciseId, repsPrescribed, series } = body as {
     patientId: string;
@@ -59,4 +60,4 @@ export async function POST(req: NextRequest) {
   });
 
   return NextResponse.json({ ...attempt, breakdown: result }, { status: 201 });
-}
+});

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { withApiErrorHandling } from "@/lib/apiHandler";
 
-export async function POST(req: NextRequest) {
+export const POST = withApiErrorHandling(async (req: NextRequest) => {
   const body = await req.json();
   const { patientId, exerciseId, repetitions, notes } = body as {
     patientId: string;
@@ -27,4 +28,4 @@ export async function POST(req: NextRequest) {
     },
   });
   return NextResponse.json(assignment, { status: 201 });
-}
+});

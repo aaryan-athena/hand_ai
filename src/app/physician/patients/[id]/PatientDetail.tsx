@@ -15,6 +15,8 @@ import {
 import type { PatientDetail as PatientDetailType, Exercise } from "@/lib/types";
 import { EXERCISE_LABELS } from "@/lib/handMetrics";
 import { format } from "date-fns";
+import { fetchJson } from "@/lib/fetchJson";
+import ErrorNotice from "@/components/ErrorNotice";
 
 export default function PatientDetail({ patientId, physicianId }: { patientId: string; physicianId: string }) {
   const [patient, setPatient] = useState<PatientDetailType | null>(null);
@@ -22,32 +24,36 @@ export default function PatientDetail({ patientId, physicianId }: { patientId: s
   const [selectedExerciseId, setSelectedExerciseId] = useState("");
   const [assignReps, setAssignReps] = useState(10);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function reload() {
-    const p = await fetch(`/api/patients/${patientId}`).then((r) => r.json());
+    const p = await fetchJson<PatientDetailType>(`/api/patients/${patientId}`);
     setPatient(p);
   }
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    reload();
-    fetch(`/api/exercises?physicianId=${physicianId}`)
-      .then((r) => r.json())
-      .then(setLibrary);
+    Promise.all([
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      reload(),
+      fetchJson<Exercise[]>(`/api/exercises?physicianId=${physicianId}`).then(setLibrary),
+    ]).catch((e: Error) => setError(e.message));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [patientId, physicianId]);
 
   async function assignExercise() {
     if (!selectedExerciseId) return;
     setBusy(true);
+    setError(null);
     try {
-      await fetch("/api/patient-exercises", {
+      await fetchJson("/api/patient-exercises", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ patientId, exerciseId: selectedExerciseId, repetitions: assignReps }),
       });
       await reload();
       setSelectedExerciseId("");
+    } catch (e) {
+      setError((e as Error).message);
     } finally {
       setBusy(false);
     }
@@ -55,18 +61,22 @@ export default function PatientDetail({ patientId, physicianId }: { patientId: s
 
   async function updateAssignment(id: string, data: Partial<{ repetitions: number; active: boolean }>) {
     setBusy(true);
+    setError(null);
     try {
-      await fetch(`/api/patient-exercises/${id}`, {
+      await fetchJson(`/api/patient-exercises/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
       });
       await reload();
+    } catch (e) {
+      setError((e as Error).message);
     } finally {
       setBusy(false);
     }
   }
 
+  if (error && !patient) return <ErrorNotice message={error} />;
   if (!patient) return <p className="text-slate-400">Loading…</p>;
 
   const assignedExerciseIds = new Set(patient.assignments.map((a) => a.exerciseId));
@@ -95,6 +105,8 @@ export default function PatientDetail({ patientId, physicianId }: { patientId: s
           Export Report
         </Link>
       </div>
+
+      {error && <ErrorNotice message={error} />}
 
       <section className="space-y-3">
         <h2 className="text-lg font-semibold">Assigned Exercises</h2>

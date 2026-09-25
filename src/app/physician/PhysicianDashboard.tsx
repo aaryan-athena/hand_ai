@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { Physician, Patient, Exercise } from "@/lib/types";
 import { EXERCISE_LABELS } from "@/lib/handMetrics";
+import { fetchJson } from "@/lib/fetchJson";
+import ErrorNotice from "@/components/ErrorNotice";
 
 const STORAGE_KEY = "handrehab_physician_id";
 
@@ -12,6 +14,7 @@ export default function PhysicianDashboard() {
   const [physicianId, setPhysicianId] = useState<string | null>(null);
   const [newName, setNewName] = useState("");
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const [patients, setPatients] = useState<Patient[]>([]);
   const [exercises, setExercises] = useState<Exercise[]>([]);
@@ -21,58 +24,63 @@ export default function PhysicianDashboard() {
   const [newPatientCondition, setNewPatientCondition] = useState("");
 
   useEffect(() => {
-    fetch("/api/physicians")
-      .then((r) => r.json())
-      .then((data: Physician[]) => {
+    fetchJson<Physician[]>("/api/physicians")
+      .then((data) => {
         setPhysicians(data);
         const stored = localStorage.getItem(STORAGE_KEY);
         if (stored && data.some((p) => p.id === stored)) setPhysicianId(stored);
-        setLoading(false);
-      });
+      })
+      .catch((e: Error) => setError(e.message))
+      .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => {
     if (!physicianId) return;
     localStorage.setItem(STORAGE_KEY, physicianId);
-    fetch(`/api/patients?physicianId=${physicianId}`)
-      .then((r) => r.json())
-      .then(setPatients);
-    fetch(`/api/exercises?physicianId=${physicianId}`)
-      .then((r) => r.json())
-      .then(setExercises);
+    Promise.all([
+      fetchJson<Patient[]>(`/api/patients?physicianId=${physicianId}`).then(setPatients),
+      fetchJson<Exercise[]>(`/api/exercises?physicianId=${physicianId}`).then(setExercises),
+    ]).catch((e: Error) => setError(e.message));
   }, [physicianId]);
 
   async function createPhysician() {
     if (!newName.trim()) return;
-    const res = await fetch("/api/physicians", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: newName.trim() }),
-    });
-    const p: Physician = await res.json();
-    setPhysicians((prev) => [...prev, p].sort((a, b) => a.name.localeCompare(b.name)));
-    setPhysicianId(p.id);
-    setNewName("");
+    try {
+      const p = await fetchJson<Physician>("/api/physicians", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newName.trim() }),
+      });
+      setPhysicians((prev) => [...prev, p].sort((a, b) => a.name.localeCompare(b.name)));
+      setPhysicianId(p.id);
+      setNewName("");
+    } catch (e) {
+      setError((e as Error).message);
+    }
   }
 
   async function createPatient() {
     if (!newPatientName.trim() || !physicianId) return;
-    const res = await fetch("/api/patients", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: newPatientName.trim(),
-        condition: newPatientCondition.trim() || null,
-        physicianId,
-      }),
-    });
-    const p: Patient = await res.json();
-    setPatients((prev) => [...prev, p].sort((a, b) => a.name.localeCompare(b.name)));
-    setNewPatientName("");
-    setNewPatientCondition("");
+    try {
+      const p = await fetchJson<Patient>("/api/patients", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: newPatientName.trim(),
+          condition: newPatientCondition.trim() || null,
+          physicianId,
+        }),
+      });
+      setPatients((prev) => [...prev, p].sort((a, b) => a.name.localeCompare(b.name)));
+      setNewPatientName("");
+      setNewPatientCondition("");
+    } catch (e) {
+      setError((e as Error).message);
+    }
   }
 
   if (loading) return <p className="text-slate-400">Loading…</p>;
+  if (error) return <ErrorNotice message={error} />;
 
   if (!physicianId) {
     return (

@@ -9,6 +9,8 @@ import {
   type ExerciseType,
 } from "@/lib/handMetrics";
 import type { Exercise, PatientDetail } from "@/lib/types";
+import { fetchJson } from "@/lib/fetchJson";
+import ErrorNotice from "@/components/ErrorNotice";
 
 type Props = {
   patientId: string;
@@ -50,14 +52,16 @@ export default function ExercisePerformer({ patientId, exerciseId }: Props) {
 
   useEffect(() => {
     Promise.all([
-      fetch(`/api/exercises/${exerciseId}`).then((r) => r.json()),
-      fetch(`/api/patients/${patientId}`).then((r) => r.json()),
-    ]).then(([ex, patient]: [Exercise, PatientDetail]) => {
-      setExercise(ex);
-      const assignment = patient.assignments.find((a) => a.exerciseId === exerciseId);
-      setPrescribedReps(assignment?.repetitions ?? ex.repetitions);
-      setLoading(false);
-    });
+      fetchJson<Exercise>(`/api/exercises/${exerciseId}`),
+      fetchJson<PatientDetail>(`/api/patients/${patientId}`),
+    ])
+      .then(([ex, patient]) => {
+        setExercise(ex);
+        const assignment = patient.assignments.find((a) => a.exerciseId === exerciseId);
+        setPrescribedReps(assignment?.repetitions ?? ex.repetitions);
+      })
+      .catch((e: Error) => setErrorMsg(e.message))
+      .finally(() => setLoading(false));
   }, [exerciseId, patientId]);
 
   const liveCycles = useMemo(() => {
@@ -95,23 +99,21 @@ export default function ExercisePerformer({ patientId, exerciseId }: Props) {
     setSubmitting(true);
     setErrorMsg(null);
     try {
-      const res = await fetch("/api/attempts", {
+      const data = await fetchJson<{ breakdown: ScoreResult }>("/api/attempts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ patientId, exerciseId, repsPrescribed: prescribedReps, series }),
       });
-      const data = await res.json();
-      if (!res.ok) {
-        setErrorMsg(data.error || "Failed to score attempt.");
-        return;
-      }
-      setResult(data.breakdown as ScoreResult);
+      setResult(data.breakdown);
+    } catch (e) {
+      setErrorMsg((e as Error).message);
     } finally {
       setSubmitting(false);
     }
   }
 
-  if (loading || !exercise) return <p className="text-slate-400">Loading…</p>;
+  if (loading) return <p className="text-slate-400">Loading…</p>;
+  if (!exercise) return <ErrorNotice message={errorMsg ?? "Could not load this exercise."} />;
 
   const range = exercise.maxValue - exercise.minValue || 1;
   const gaugePct = currentValue !== null ? Math.min(1, Math.max(0, (currentValue - exercise.minValue) / range)) : 0;

@@ -5,6 +5,8 @@ import { format } from "date-fns";
 import type { PatientDetail } from "@/lib/types";
 import { EXERCISE_LABELS, type RepScore } from "@/lib/handMetrics";
 import { downloadCSV } from "@/lib/csv";
+import { fetchJson } from "@/lib/fetchJson";
+import ErrorNotice from "@/components/ErrorNotice";
 
 type Props = {
   patientId: string;
@@ -29,13 +31,15 @@ function scoreColor(score: number) {
 export default function ReportView({ patientId, audience }: Props) {
   const [patient, setPatient] = useState<PatientDetail | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch(`/api/patients/${patientId}`)
-      .then((r) => r.json())
-      .then(setPatient);
+    fetchJson<PatientDetail>(`/api/patients/${patientId}`)
+      .then(setPatient)
+      .catch((e: Error) => setError(e.message));
   }, [patientId]);
 
+  if (error) return <ErrorNotice message={error} />;
   if (!patient) return <p className="text-slate-400 print:hidden">Loading…</p>;
 
   function toggleExpanded(id: string) {

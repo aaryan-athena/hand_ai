@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Patient } from "@/lib/types";
+import { fetchJson } from "@/lib/fetchJson";
+import ErrorNotice from "@/components/ErrorNotice";
 
 const STORAGE_KEY = "handrehab_patient_id";
 
@@ -10,14 +12,13 @@ export default function PatientSelector() {
   const router = useRouter();
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/patients")
-      .then((r) => r.json())
-      .then((data: Patient[]) => {
-        setPatients(data);
-        setLoading(false);
-      });
+    fetchJson<Patient[]>("/api/patients")
+      .then(setPatients)
+      .catch((e: Error) => setError(e.message))
+      .finally(() => setLoading(false));
   }, []);
 
   function selectPatient(id: string) {
@@ -26,6 +27,7 @@ export default function PatientSelector() {
   }
 
   if (loading) return <p className="text-slate-400">Loading…</p>;
+  if (error) return <ErrorNotice message={error} />;
 
   return (
     <div className="max-w-md mx-auto space-y-4">

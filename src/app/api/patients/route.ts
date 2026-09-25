@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { withApiErrorHandling } from "@/lib/apiHandler";
 
-export async function GET(req: NextRequest) {
+export const GET = withApiErrorHandling(async (req: NextRequest) => {
   const physicianId = req.nextUrl.searchParams.get("physicianId");
   const patients = await prisma.patient.findMany({
     where: physicianId ? { physicianId } : undefined,
@@ -9,9 +10,9 @@ export async function GET(req: NextRequest) {
     include: { physician: true },
   });
   return NextResponse.json(patients);
-}
+});
 
-export async function POST(req: NextRequest) {
+export const POST = withApiErrorHandling(async (req: NextRequest) => {
   const body = await req.json();
   const name = String(body.name ?? "").trim();
   const condition = body.condition ? String(body.condition) : null;
@@ -19,4 +20,4 @@ export async function POST(req: NextRequest) {
   if (!name) return NextResponse.json({ error: "Name is required" }, { status: 400 });
   const patient = await prisma.patient.create({ data: { name, condition, physicianId } });
   return NextResponse.json(patient, { status: 201 });
-}
+});
