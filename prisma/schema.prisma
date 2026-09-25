@@ -7,10 +7,13 @@ generator client {
 // Postgres (Vercel Postgres / Neon / Supabase, etc). SQLite can't be used on
 // Vercel since serverless functions get an ephemeral, per-invocation
 // filesystem — a local .db file wouldn't persist between requests.
+// One connection string, so a missing second env var can't break the build.
+// Locally, point DATABASE_URL at Neon's DIRECT (non-pooled) string so
+// `prisma db push` can run DDL; on Vercel, set it to the POOLED string, which
+// is what serverless invocations need.
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL") // pooled connection string (use for app runtime)
-  directUrl = env("DIRECT_URL") // non-pooled, used for migrations/db push
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 enum ExerciseType {

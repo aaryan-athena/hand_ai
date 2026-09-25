@@ -49,10 +49,11 @@ Rep detection uses a hysteresis state machine over the metric time series
 
 1. Get a Postgres database. Easiest: a free [Neon](https://neon.tech) project,
    or the "Neon"/"Postgres" integration from the Vercel dashboard's Storage
-   tab (works locally too — just copy the connection strings out).
-2. Copy `.env.example` to `.env` and fill in `DATABASE_URL` (pooled
-   connection string) and `DIRECT_URL` (direct/non-pooled — same DB, just the
-   non-pgbouncer connection string, used for schema pushes/migrations).
+   tab (works locally too — just copy the connection string out).
+2. Paste the env block from Neon's "Connection Details" panel into `.env`. It
+   defines both `DATABASE_URL` (pooled — what the app uses) and
+   `DATABASE_URL_UNPOOLED` (direct — what schema pushes use). See
+   `.env.example` for why the distinction matters.
 3.
    ```bash
    npm install
@@ -70,16 +71,21 @@ after that). Camera access requires `localhost` or HTTPS.
 2. Add a Postgres database from the Vercel dashboard **Storage** tab (Neon
    integration), or bring your own — either way you'll get pooled + direct
    connection strings.
-3. In the project's **Settings → Environment Variables**, set:
-   - `DATABASE_URL` — the pooled connection string
-   - `DIRECT_URL` — the direct/non-pooled connection string
-4. Before (or after) the first deploy, push the schema to that database once:
+3. In the project's **Settings → Environment Variables**, set `DATABASE_URL`
+   to the **pooled** connection string (the host containing `-pooler`).
+4. **Create the tables** — this is a separate, manual step, and skipping it is
+   the most common cause of a deployed app erroring on every page. Creating
+   the Neon database does *not* create your app's tables.
+
+   Neon's "Connection Details" panel hands you an env block containing both
+   `DATABASE_URL` (pooled) and `DATABASE_URL_UNPOOLED` (direct); paste it into
+   `.env`. Then run the push against the **unpooled** one, since the pooler
+   runs PgBouncer in transaction mode and doesn't support the DDL locks
+   Prisma needs:
    ```bash
-   DATABASE_URL="<pooled>" DIRECT_URL="<direct>" npx prisma db push
+   DATABASE_URL="$(grep -m1 '^DATABASE_URL_UNPOOLED=' .env | cut -d= -f2-)" npx prisma db push
    ```
-   (run this from your machine, or via `vercel env pull` to grab the values
-   locally first). This only needs to be re-run when `prisma/schema.prisma`
-   changes.
+   Re-run that whenever `prisma/schema.prisma` changes.
 5. Deploy. `npm run build` already runs `prisma generate` first (see
    `package.json`), and `postinstall` also runs it as a safety net — no extra
    Vercel build-command configuration needed.
@@ -91,8 +97,9 @@ client-side.
 ### Troubleshooting a deployment
 
 Open **`/api/health`** on the deployed URL. It reports whether `DATABASE_URL`
-and `DIRECT_URL` are set, which host they point at, and whether the tables
-exist — without ever printing the credentials. Typical results:
+is set, which host it points at, whether that host is the pooled one, and
+whether the tables exist — without ever printing the credentials. Typical
+results:
 
 - `DATABASE_URL_set: false` → the env var isn't set for this environment in
   Vercel (check that it's enabled for Production, not just Preview), and
@@ -101,6 +108,11 @@ exist — without ever printing the credentials. Typical results:
   was never run against it (step 4 above).
 - `"Can't reach database server"` → wrong host, or the connection string is
   missing `?sslmode=require` (Neon requires SSL).
+- `pooled: false` in production → you're using the direct string on Vercel;
+  switch to the `-pooler` host to avoid exhausting connections.
+
+Note: Neon Auth is unrelated to any of this — it adds its own `neon_auth`
+schema and does not create or manage this app's tables.
 
 ## Data model
 

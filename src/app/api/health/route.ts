@@ -13,7 +13,7 @@ export async function GET() {
 
   const env = {
     DATABASE_URL_set: Boolean(raw),
-    DIRECT_URL_set: Boolean(process.env.DIRECT_URL),
+    pooled: raw ? raw.includes("-pooler.") : null,
     protocol: raw ? raw.split(":")[0] : null,
     host: (() => {
       if (!raw) return null;
